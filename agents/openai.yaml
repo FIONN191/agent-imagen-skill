@@ -1,0 +1,7 @@
+interface:
+  display_name: "个人账号生图"
+  short_description: "无需 API Key：GPT Image 2 用 Codex 自带生图，Nano Banana 通过 Antigravity CLI（agy）生成/改图"
+  default_prompt: "使用 $gen-image 生成这张图：先确认引擎（GPT Image 2 或 Nano Banana）、比例和参考图，生成后检查图片并给出保存路径。"
+
+policy:
+  allow_implicit_invocation: true
