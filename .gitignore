@@ -1,2 +1,7 @@
 .sync-origin
 .DS_Store
+# OpenAI API key lives here; never commit it
+.env
+.env.*
+!.env.example
+__pycache__/
