@@ -28,19 +28,17 @@ Codex 用户可以克隆到 `~/.codex/skills/gen-image`。
 ## 配置 OpenAI API Key（只有 API 途径需要）
 1. 在 [platform.openai.com/api-keys](https://platform.openai.com/api-keys) 创建 Key，并在 Billing 里充值（ChatGPT 会员不含 API 额度）。
 2. 组织要先完成验证才能用 GPT Image：Settings → Organization → General → **Verify Organization**，通过后约 15 分钟生效。
-3. 复制配置模板，把 Key 填在 `OPENAI_API_KEY=` 后面：
+3. 运行下面的命令，在弹出的密码框里粘贴 Key（输入内容隐藏）：
    ```bash
-   cd ~/.claude/skills/gen-image
-   cp .env.example .env && chmod 600 .env
-   open -e .env
+   cd ~/.claude/skills/gen-image && python3 scripts/openai_image.py --set-key
    ```
-   `.env` 已在 `.gitignore` 里，不会被提交。访问 OpenAI 需要代理时，在里面填 `HTTPS_PROXY=http://127.0.0.1:7890`；默认模型、质量、分辨率也可以在这里改。
-4. 自检（不生图、不花钱）：
+   Key 只保存到这台 Mac 上的 `.env`（权限 600，已在 `.gitignore` 里，不会被提交），不会显示在聊天或终端里，保存后自动免费自检。在 Claude 里缺 Key 时，skill 也会自己弹出这个密码框。
+4. 可选：访问 OpenAI 需要代理时，在 `.env` 里填 `HTTPS_PROXY=http://127.0.0.1:7890`；默认模型、质量、分辨率也在这里改（见 `.env.example`）。以后随时可以自检（不生图、不花钱）：
    ```bash
    python3 scripts/openai_image.py --check
    ```
 
-不想用文件也可以在 shell 里 `export OPENAI_API_KEY=...`。只有 `.env` 里没填 Key 时才会读这个环境变量。
+也可以手动 `cp .env.example .env` 再自己填，或在 shell 里 `export OPENAI_API_KEY=...`。只有 `.env` 里没填 Key 时才会读这个环境变量。
 
 ## 使用
 在 Claude Code 里直接说「画一张……」「把这张图改成……」，按面板选择参数即可。图片默认保存在 `~/Pictures/AI生图/`。

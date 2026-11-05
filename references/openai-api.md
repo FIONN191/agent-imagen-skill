@@ -5,11 +5,13 @@
 ## 首次配置（用户自己填 Key）
 1. 在 https://platform.openai.com/api-keys 创建 API Key，并在 Billing 页面充值（ChatGPT 会员不含 API 额度）。
 2. GPT Image 模型要求组织先完成验证：Settings → Organization → General → **Verify Organization**，通过后约 15 分钟生效。
-3. 在 skill 目录里复制模板，再用编辑器把 Key 填在 `OPENAI_API_KEY=` 后面（`.env` 已在 `.gitignore` 里，不会被提交）：
-   ```bash
-   cd <skill-root> && cp .env.example .env && chmod 600 .env
-   ```
-4. 自检（不生图、不花钱，会检查 Key 是否有效、默认模型能否使用）：
+3. 填 Key（二选一）。`.env` 已在 `.gitignore` 里，不会被提交：
+   - **弹窗（推荐）**：运行下面这条命令。macOS 上会弹出密码输入框（输入内容隐藏）；没有图形界面时改成终端里的隐藏输入。Key 只写进本机 `<skill-root>/.env`（权限 600，没有 `.env` 时按模板新建，其余设置保留），不会被打印，保存后自动自检。
+     ```bash
+     python3 <skill-root>/scripts/openai_image.py --set-key
+     ```
+   - **手动**：`cd <skill-root> && cp .env.example .env && chmod 600 .env`，再用编辑器把 Key 填在 `OPENAI_API_KEY=` 后面。
+4. 以后随时可以自检（不生图、不花钱，检查 Key 是否有效、默认模型能否使用）：
    ```bash
    python3 <skill-root>/scripts/openai_image.py --check
    ```
@@ -22,7 +24,7 @@
 
 给 Agent 的规则：
 - 不要读取、打印或回显 `.env` 的内容，不要把 Key 写进命令行参数或日志；脚本自己读取 Key，输出里只显示 `sk-proj-...末4位`。
-- 缺 Key 时，把 `.env` 的完整路径告诉用户，请用户自己填写，**不要让用户把 Key 发到对话里**。如果用户已经在对话里贴了 Key 并要求代填，可以写进 `.env`（不要回显），同时提醒用户这个 Key 已出现在对话记录里，用完最好到后台轮换。
+- 缺 Key 或用户要更换 Key 时，告诉用户「请在弹出的输入框里粘贴 Key」，然后运行 `--set-key`（Bash `timeout: 600000`；Codex 里请用户批准越过沙箱运行）。用户点「取消」就什么都不保存。会话不在用户电脑上运行（比如云端会话）时弹不了窗，请用户在自己电脑的终端里运行这条命令。**不要让用户把 Key 发到对话里。**如果用户已经在对话里贴了 Key 并要求代填，可以写进 `.env`（不要回显），同时提醒用户这个 Key 已出现在对话记录里，最好到后台轮换。
 - 报错时按脚本输出的 `HINT:` 处理。模型暂不可用时可以改用 2.5 同款并告诉用户；不要为了绕过安全拦截自行改 `--moderation low`，也不要自动换成别的付费途径。
 
 ## 模型
@@ -86,7 +88,8 @@ python3 <skill-root>/scripts/openai_image.py -p "<怎么改>" -i 原图.png --ma
 ## 报错对照
 | 现象 | 处理 |
 |---|---|
-| `no OpenAI API key configured` | 请用户填 `.env`（见上方「首次配置」） |
+| `no OpenAI API key configured` | 运行 `--set-key` 弹出密码框让用户填（见上方「首次配置」） |
+| `no input box is possible here` | 当前环境既没有 macOS 桌面也没有终端（比如云端会话）：请用户在自己电脑的终端运行 `--set-key` |
 | HTTP 401 `invalid_api_key` | Key 填错、没复制完整或已撤销：请用户重新复制 |
 | HTTP 403 `organization must be verified` | 到 Settings → Organization → General 点 Verify Organization，通过后约 15 分钟生效 |
 | HTTP 403 `unsupported_country_region_territory` | 当前出口地区不受支持：在 `.env` 里配置受支持地区的 `HTTPS_PROXY` |

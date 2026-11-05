@@ -16,14 +16,17 @@ from __future__ import annotations
 import argparse
 import base64
 import binascii
+import getpass
 import http.client
 import json
 import math
 import os
 import re
+import shutil
 import socket
 import ssl
 import struct
+import subprocess
 import sys
 import time
 import urllib.error
@@ -33,6 +36,8 @@ import uuid
 
 SKILL_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ENV_FILE = os.path.join(SKILL_ROOT, ".env")
+ENV_EXAMPLE = os.path.join(SKILL_ROOT, ".env.example")
+THIS_SCRIPT = os.path.abspath(__file__)
 DEFAULTS = {
     "OPENAI_BASE_URL": "https://api.openai.com/v1",
     "OPENAI_IMAGE_MODEL": "gpt-image-2.6-sunburst",
@@ -875,12 +880,103 @@ def check(cfg, args):
     return 0
 
 
+def applescript_text(text):
+    return '"%s"' % text.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+
+
+def ask_key_dialog(existing):
+    """macOS password box with hidden input. Returns the key, "" if cancelled, None if no GUI is available."""
+    if not shutil.which("osascript"):
+        return None
+    message = ("粘贴你的 OpenAI API Key（sk-...）。\n\n只会保存到这台电脑上的：\n%s\n不会显示在聊天里，也不会上传到别处。" % ENV_FILE)
+    if existing:
+        message += "\n\n会替换已保存的 Key（%s）。" % mask_key(existing)
+    script = [
+        "activate",
+        "set r to display dialog %s default answer \"\" with hidden answer with title %s "
+        "buttons {\"取消\", \"保存\"} default button \"保存\" cancel button \"取消\" with icon note giving up after 300"
+        % (applescript_text(message), applescript_text("gen-image · OpenAI API Key")),
+        "if gave up of r then return \"\"",
+        "return text returned of r",
+    ]
+    command = ["osascript"]
+    for line in script:
+        command += ["-e", line]
+    try:
+        proc = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                              universal_newlines=True, timeout=330)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if proc.returncode != 0:
+        return "" if "-128" in proc.stderr else None  # -128 = the user pressed 取消
+    return proc.stdout.strip()
+
+
+def write_env_key(key):
+    """Set OPENAI_API_KEY in .env (created from .env.example if missing), keeping every other line; mode 600."""
+    source = ENV_FILE if os.path.isfile(ENV_FILE) else ENV_EXAMPLE if os.path.isfile(ENV_EXAMPLE) else None
+    lines = []
+    if source:
+        with open(source, encoding="utf-8-sig") as fh:
+            lines = fh.read().splitlines()
+    out, done = [], False
+    for line in lines:
+        body = line.strip()
+        body = body[len("export "):].lstrip() if body.startswith("export ") else body
+        if re.match(r"OPENAI_API_KEY\s*=", body):
+            if not done:
+                out.append("OPENAI_API_KEY=" + key)
+                done = True
+            continue
+        out.append(line)
+    if not done:
+        out.append("OPENAI_API_KEY=" + key)
+    tmp = "%s.tmp-%d" % (ENV_FILE, os.getpid())
+    try:
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write("\n".join(out) + "\n")
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, ENV_FILE)
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+
+
+def set_key(args):
+    existing = read_env_file(ENV_FILE).get("OPENAI_API_KEY", "")
+    key = ask_key_dialog(existing)
+    if key is None:
+        if not sys.stdin.isatty():
+            print("ERROR: no input box is possible here (no macOS desktop session and no terminal). "
+                  "Run this in a terminal on your computer instead: python3 '%s' --set-key" % THIS_SCRIPT)
+            return 2
+        key = getpass.getpass("OpenAI API key (input is hidden, Enter to save): ")
+    key = key.strip().strip("\"'\u201c\u201d").strip()
+    if key.lower().startswith("bearer "):
+        key = key[len("bearer "):].strip()
+    if not key:
+        print("Cancelled: nothing was saved.")
+        return 1
+    if re.search(r"\s", key) or not key.isascii():
+        print("ERROR: that does not look like an API key (spaces or non-ASCII characters); nothing was saved.")
+        return 2
+    if not key.startswith("sk-"):
+        print("NOTE: OpenAI keys normally start with sk-; saving it anyway.")
+    write_env_key(key)
+    print("Saved the key (%s) to %s, readable only by you. It was not printed or sent anywhere." % (mask_key(key), ENV_FILE))
+    rc = check(Config(), args)
+    if rc != 0:
+        print("NOTE: the key is saved. After fixing the problem above, re-run: python3 '%s' --check" % THIS_SCRIPT)
+    return rc
+
+
 def parse_args(argv):
     p = argparse.ArgumentParser(
         prog="openai_image.py",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description="Generate or edit images with the OpenAI Images API (GPT Image 2.x) using your own API key.",
-        epilog="Setup: cp .env.example .env, put OPENAI_API_KEY=sk-... in it, then run --check (free).\n"
+        epilog="Setup: run --set-key (password box, saves to .env) or put OPENAI_API_KEY=sk-... in .env; --check is free.\n"
                "Sizes: 1K/2K/4K keep about 1024x1024 / 2560x1440 / 3840x2160 pixels for any aspect ratio.")
     p.add_argument("-p", "--prompt", help="image prompt (required)")
     p.add_argument("-i", "--image", action="append", default=[], metavar="FILE",
@@ -905,6 +1001,8 @@ def parse_args(argv):
     p.add_argument("--timeout", type=float, help="seconds to wait per request [.env or 600]")
     p.add_argument("--record", help=argparse.SUPPRESS)
     mode = p.add_mutually_exclusive_group()
+    mode.add_argument("--set-key", action="store_true",
+                      help="open a password box (macOS; hidden terminal prompt elsewhere), save the key to .env, then --check")
     mode.add_argument("--check", action="store_true", help="verify the key and model access (no image, no cost)")
     mode.add_argument("--dry-run", action="store_true", help="show the request that would be sent, then stop")
     mode.add_argument("--preflight", action="store_true", help=argparse.SUPPRESS)
@@ -922,6 +1020,8 @@ def main(argv=None):
             except OSError:
                 print("?")
         return 0
+    if args.set_key:
+        return set_key(args)
     cfg = Config()
     try:
         if args.check:

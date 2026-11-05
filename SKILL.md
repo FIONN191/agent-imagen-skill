@@ -84,7 +84,7 @@ ChatGPT 网页和 AI Studio 两个途径依赖 Claude in Chrome，Codex 端不�
 ## 须知
 - 分辨率：OpenAI API 按 1K/2K/4K 指定，最高 3840×2160（超过 2560×1440 属实验性）；Codex 和 ChatGPT 网页固定约 1672×941（16:9）/ 941×1672（9:16），提示词里要求 4K 也不变；agy 的 Nano Banana 2 约 1376×768；AI Studio 的 Nano Banana 2.1 能出 2K/4K（最高 5504×3072）。
 - 额度与费用：Codex、ChatGPT 网页用 ChatGPT 订阅额度，agy、AI Studio 用 Google 账号额度，不额外花钱；OpenAI API 按 token 计费，记在用户自己的 OpenAI 账户（粗估见 [references/openai-api.md](references/openai-api.md#费用粗估)）。额度用尽或余额不足时如实转告用户，不要自动换成别的付费途径。
-- API Key：不要读取、打印或回显 `.env`，不要把 Key 放进命令行参数。缺 Key 时把 `<skill-root>/.env` 的完整路径告诉用户，请用户自己填写，不要让用户把 Key 发到对话里。
+- API Key：不要读取、打印或回显 `.env`，不要把 Key 放进命令行参数，也不要让用户把 Key 发到对话里。缺 Key（报 `no OpenAI API key configured`），或用户要设置/更换 Key 时，先说一句「请在弹出的输入框里粘贴 Key」，再运行 `python3 <skill-root>/scripts/openai_image.py --set-key`（Bash `timeout: 600000`）：用户的 Mac 上会弹出密码输入框（输入内容隐藏），Key 只写进本机 `<skill-root>/.env`（权限 600），输出里只有脱敏后的末 4 位，保存后自动免费自检。在 Codex 里要请用户批准该命令越过沙箱运行；会话不在用户电脑上运行（比如云端会话）时弹不了窗，请用户在自己电脑的终端里运行这条命令。
 - 脚本以只读沙箱运行 Codex（`-s read-only`）、以 `--sandbox` 运行 agy，**不要**加 `--dangerously-skip-permissions` / `--dangerously-bypass-approvals-and-sandbox`。
 
 ## 故障排查
@@ -95,7 +95,7 @@ ChatGPT 网页和 AI Studio 两个途径依赖 Claude in Chrome，Codex 端不�
 | `Antigravity CLI not found` | `curl -fsSL https://antigravity.google/cli/install.sh \| bash` |
 | agy 要求登录 / 无模型 | 让用户在终端运行一次 `agy`，选 Google OAuth 登录 |
 | agy 提示 quota / limit | Nano Banana 额度用完，改用 `-e gpt` 或等额度刷新 |
-| `no OpenAI API key configured` | 请用户编辑 `<skill-root>/.env`（没有就先 `cp .env.example .env`）填上 `OPENAI_API_KEY`，再运行 `python3 <skill-root>/scripts/openai_image.py --check` 自检（免费） |
+| `no OpenAI API key configured` | 运行 `python3 <skill-root>/scripts/openai_image.py --set-key`，弹出密码框让用户填 Key（见「须知」）；之后可随时用 `--check` 免费自检 |
 | API 报 401 / 403 / 404 / 429 / 400 等 | 按输出里的 `HINT:` 处理，对照表见 [references/openai-api.md](references/openai-api.md#报错对照) |
 | `python3 not found` | macOS 运行 `xcode-select --install` |
 | 没有 SAVED 输出 | 查看 stderr 给出的日志目录里的 `log.jsonl` / `log.txt` |
